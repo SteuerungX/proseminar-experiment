@@ -12,8 +12,6 @@ dim_y = 16
 error = 0.1
 
 def main():
-    n = dim_x*dim_y
-
     (world, index, n) = init_world()
 
     # Just a data class for improved structure
@@ -27,7 +25,7 @@ def main():
 
     # Start run at random position
     run = Run(w_model, O)
-    run.run(25)
+    run.run(24)
 
     """
     for i in range(0,16):
@@ -46,27 +44,34 @@ def main():
 
     # print(forward(w_model, T, O, run.observations))
     # print(backward(w_model, T, O, run.observations[8::]))
-    #print(forward_backward_k(w_model, T, O, run.observations, 8))
+    # print(forward_backward_k(w_model, T, O, run.observations, 8))
 
-    print(forward_backward_dynamic_programming_2(w_model, T, O, run.observations)[24])
-    # print(forward_backward(w_model, T, O, run.observations)[15])
+    f1 = forward_backward(w_model, T, O, run.observations)[24]
 
+    f2 = forward_backward_dynamic_programming(w_model, T, O, run.observations)[24]
+    # f3 = forward_backward_dynamic_programming_2(w_model, T, O, run.observations)[24]
+    f3 = forward_backward_4(w_model, T, O, run.observations)[24]
+
+    if len(f1) == len(f2) and len(f2) == len(f3):
+        for i in range(0, len(f1)):
+            print('[{:02}] nicht dyn.: {:3.15f}, \t dyn.: {:3.15f}, \t dyn(2).: {:3.15f}'.format(i, f1[i,0], f2[i,0], f3[i,0]))
+    else:
+        print("Fehler: Einträge habe nicht gleiche Länge")
+
+    """
+
+    for i in range(0, len(f1)):
+            print('[{:02}] nicht dyn.: {:3.15f}'.format(i, f1[i,0]))
+        
+    """
+
+    pos_list = []
     for i in range(0,24):
         (x,y) = run.positions[i]
-        index = w_model.index[x,y]
-        print(f"X: {x} Y: {y}, Index: {index}")
-
-
-
-    # n = get_neighbors(x,y,w_model.world)
-    # e = get_evidences(w_model.n, error)
-
-    # print(e)
-    # print(world)
-    # print(np.shape(T))
-    # print(np.shape(position))
-    # print(T)
-    # print(O)
+        pos_index = w_model.index[x,y]
+        pos_list.append(pos_index)
+        # print(f"X: {x} Y: {y}, Index: {pos_index}")
+    print(pos_list)
      
 def init_world()-> np.array:
         world = [
@@ -200,7 +205,6 @@ def forward(w_model: WorldModel, transition_model: np.array, observation_model, 
 def forward_step(w_model: WorldModel, transition_model: np.array, observation_model, previous_step: np.array, evidence: np.array) -> np.array:
     """
         Uses one evidence set to perform a single 'step' forwards. 
-        Requires the previous_step argument to be correct with first initialization as a vector of ones.
     """
     evidence_matrix = SensorModel.get_evidence_matrix(w_model, observation_model, evidence)
 
@@ -225,7 +229,6 @@ def backward(w_model: WorldModel, transition_model: np.array, observation_model:
 def backward_step(w_model: WorldModel, transition_model: np.array, observation_model: np.array, previous_step: np.array, evidence: np.array):
     """
         Uses one evidence set to perform a single 'step' backwards. 
-        Requires the previous_step argument to be correct with first initialization as a vector of ones.
     """
     evidence_matrix = SensorModel.get_evidence_matrix(w_model, observation_model, evidence)
 
@@ -236,7 +239,7 @@ def backward_step(w_model: WorldModel, transition_model: np.array, observation_m
 def forward_backward_k(w_model: WorldModel, transition_model: np.array, observation_model: np.array, evidences: list, k: int) -> np.array:
     # Forward-Backward-Algorithm for a given k, returns X_k
 
-    return normalize(forward(w_model, transition_model, observation_model, evidences[:k]) * backward(w_model, transition_model, observation_model, evidences[k:]))
+    return normalize(forward(w_model, transition_model, observation_model, evidences[:k].copy()) * backward(w_model, transition_model, observation_model, evidences[k:].copy()))
 
 def forward_backward(w_model: WorldModel, transition_model: np.array, observation_model: np.array, evidences: list) -> list:
     """
@@ -246,25 +249,26 @@ def forward_backward(w_model: WorldModel, transition_model: np.array, observatio
     estimations = []
 
     for k in range(1,len(evidences)+1):
-        estimations.append(forward_backward_k(w_model, transition_model, observation_model, evidences, k))
+        estimations.append(forward_backward_k(w_model, transition_model, observation_model, evidences.copy(), k))
     return estimations
-
 
 def forward_backward_dynamic_programming(w_model: WorldModel, transition_model: np.array, observation_model: np.array, evidences: list) -> list:
     """
         Does execute the forward-backward algorithm using the dynamic programming paradigm to increase efficency and reduce complexity to linear time complexity
     """
-    
+    print(f'Länge der Evidenzen: {len(evidences)}')
+
     estimations = []
-    forward_steps = [model.init_world_state(w_model.n)] # filled with X_0
+    forward_steps = []
+    forward_steps.append(model.init_world_state(w_model.n))
     backward_var = np.ones((w_model.n, 1), dtype=np.float64)
 
-    for k1 in range(0, len(evidences)):
-        forward_steps.append(forward_step(w_model,transition_model, observation_model, forward_steps[k1], evidences[k1]))
+    for i in range(1, len(evidences)+1):
+        forward_steps.append(forward_step(w_model,transition_model, observation_model, forward_steps[i-1], evidences[i-1]))
 
-    for k2 in range(len(evidences), 0, -1):
-        estimations.append(normalize(forward_steps[k2] * backward_var))
-        backward_var = backward_step(w_model, transition_model, observation_model, backward_var, evidences[k2-1])
+    for i in range(len(evidences), 0, -1):
+        estimations.append(normalize(forward_steps[i] * backward_var))
+        backward_var = backward_step(w_model, transition_model, observation_model, backward_var, evidences[i-1])
 
     return estimations
 
@@ -287,10 +291,48 @@ def forward_backward_dynamic_programming_2(w_model: WorldModel, transition_model
 
     return estimations
 
+def forward_backward_4(w_model: WorldModel, transition_model: np.array, observation_model: np.array, evidences: list) -> list:
+    estimations = []
+    fw = [model.init_world_state(w_model.n)] # f1, ..., ft
+    bw = [np.ones((w_model.n, 1), dtype=np.float64)]
+    bw2 = [np.ones((w_model.n, 1), dtype=np.float64)] # bt, ...., b1
+
+    b = np.ones((w_model.n, 1), dtype=np.float64) # bt, ..., b1
+
+    for k in range(1,len(evidences)+1):
+        fw.append(forward_step(w_model, transition_model, observation_model, fw[k-1], evidences[k-1]))
+        bw2.append(backward_step(w_model, transition_model, observation_model, bw2[k-1], evidences[len(evidences)-k]))
+        pass
+
+    """
+    for k in range(1,len(evidences)+1):
+        # fw.append(forward(w_model, transition_model, observation_model, evidences[:k].copy()))
+        bw.append(backward(w_model, transition_model, observation_model, evidences[k:].copy()))
+        estimations.append(normalize(fw[k] * bw2[len(bw)-1-k]))
+    """
+
+    for k in range(len(evidences),0,-1):        
+        estimations.append(normalize(fw[k] * b)) # x_t, ..., x_1
+        b = backward_step(w_model, transition_model, observation_model, bw2[k-1], evidences[k-1]) # bt, ..., b1
+
+    """
+    a = len(bw)-2
+    for i in range(0,w_model.n):
+        # print('[{}] bw: {}, \t bw2: {}'.format(i, bw[len(bw)-1-a][i,0], bw2[a][i,0]))
+         print('[{}] bw: {}, \t bw2: {}'.format(i, bw[a][i,0], bw2[len(bw)-1-a][i,0]))
+    print(len(bw)-1)
+    print(len(bw2)-1)
+    print(k)
+    print(len(bw2)-k-1)
+    """
+    estimations.reverse()
+    return estimations
+
 if __name__ == "__main__":
     main()
 
     # TODO
     # - Versionen von forward-backward (mit /ohne Dynamische Programmierung)
+    # - Bugfix für T[12,12]
     # - Fixed Lag-Smoothing 
     # - Performanceanalyse
