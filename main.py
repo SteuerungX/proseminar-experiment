@@ -27,7 +27,7 @@ def main():
 
     # Start run at random position
     run = Run(w_model, O)
-    run.run(16)
+    run.run(25)
 
     """
     for i in range(0,16):
@@ -46,12 +46,17 @@ def main():
 
     # print(forward(w_model, T, O, run.observations))
     # print(backward(w_model, T, O, run.observations[8::]))
-    print(forward_backward_k(w_model, T, O, run.observations, 8))
+    #print(forward_backward_k(w_model, T, O, run.observations, 8))
 
-    for i in range(0,16):
+    print(forward_backward_dynamic_programming_2(w_model, T, O, run.observations)[24])
+    # print(forward_backward(w_model, T, O, run.observations)[15])
+
+    for i in range(0,24):
         (x,y) = run.positions[i]
         index = w_model.index[x,y]
         print(f"X: {x} Y: {y}, Index: {index}")
+
+
 
     # n = get_neighbors(x,y,w_model.world)
     # e = get_evidences(w_model.n, error)
@@ -217,7 +222,7 @@ def backward(w_model: WorldModel, transition_model: np.array, observation_model:
 
     return world_state
 
-def backward_steps(w_model: WorldModel, transition_model: np.array, observation_model: np.array, previous_step: np.array, evidence: np.array):
+def backward_step(w_model: WorldModel, transition_model: np.array, observation_model: np.array, previous_step: np.array, evidence: np.array):
     """
         Uses one evidence set to perform a single 'step' backwards. 
         Requires the previous_step argument to be correct with first initialization as a vector of ones.
@@ -249,20 +254,38 @@ def forward_backward_dynamic_programming(w_model: WorldModel, transition_model: 
     """
         Does execute the forward-backward algorithm using the dynamic programming paradigm to increase efficency and reduce complexity to linear time complexity
     """
-
+    
     estimations = []
-    forward_steps = []
+    forward_steps = [model.init_world_state(w_model.n)] # filled with X_0
     backward_var = np.ones((w_model.n, 1), dtype=np.float64)
 
-    # TODO algorithms modify list while using it. This is not good
+    for k1 in range(0, len(evidences)):
+        forward_steps.append(forward_step(w_model,transition_model, observation_model, forward_steps[k1], evidences[k1]))
 
-    for k1 in range(1, len(evidences+1)):
-        forward_steps.append(forward(w_model, transition_model, observation_model, evidences[:k1].copy()))
+    for k2 in range(len(evidences), 0, -1):
+        estimations.append(normalize(forward_steps[k2] * backward_var))
+        backward_var = backward_step(w_model, transition_model, observation_model, backward_var, evidences[k2-1])
 
-    for k2 in range(len(evidences)+1, 1, -1):
-        # backward_steps.append(backward(w_model, transition_model, observation_model, evidences[k2:].copy()))
-        estimations.append(forward_steps[k2] * backward_var)
-        backward_var = 42 # TODO
+    return estimations
+
+
+def forward_backward_dynamic_programming_2(w_model: WorldModel, transition_model: np.array, observation_model: np.array, evidences: list) -> list:
+    """
+        Does execute the forward-backward algorithm using the dynamic programming paradigm to increase efficency and reduce complexity to linear time complexity
+    """
+    
+    estimations = []
+    forward_steps = [model.init_world_state(w_model.n)] # filled with X_0
+    backward_steps = [np.ones((w_model.n, 1), dtype=np.float64)]
+
+    for k in range(0, len(evidences)):
+        forward_steps.append(forward_step(w_model,transition_model, observation_model, forward_steps[k], evidences[k]))
+        backward_steps.append(backward_step(w_model, transition_model, observation_model, backward_steps[k], evidences[len(evidences) - k-1]))
+
+    for k in range(len(evidences), 0, -1):
+        estimations.append(normalize(forward_steps[k] * backward_steps[k]))
+
+    return estimations
 
 if __name__ == "__main__":
     main()
